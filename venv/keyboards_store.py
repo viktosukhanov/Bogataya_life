@@ -33,7 +33,7 @@ def configure(
     _get_values_from_spreadsheet = get_values_from_spreadsheet
     _find_spreadsheet_id_for_user = find_spreadsheet_id_for_user
 
-
+#test
 # ===== Работа с файлом кэша =====
 def _load_cache() -> Dict[str, Any]:
     if not os.path.exists(CACHE_PATH):
