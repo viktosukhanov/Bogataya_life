@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Bogataya life Telegram bot"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["pyjson5"]
+
 
 [tool.setuptools]
 package-dir = {"" = "src"}
