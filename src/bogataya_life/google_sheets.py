@@ -1,5 +1,6 @@
 import httplib2
 import apiclient.discovery
+from pathlib import Path
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 #from config import spreadsheet_id
@@ -8,8 +9,9 @@ from typing import Any, Dict, List
 import os
 import pyjson5
 
+
 # Грузим конфиг (json или json5 — оба прочтёт pyjson5)
-CONFIG_PATH = os.getenv("CONFIG_PATH", "config.json5")
+CONFIG_PATH = Path(os.getenv("BOGATAYA_CONFIG", PROJECT_ROOT / "config.json5"))
 with open(CONFIG_PATH, "r", encoding="utf-8") as f:
     CONFIG: Dict[str, Any] = pyjson5.load(f)
 
