@@ -2,9 +2,9 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, Message, CallbackQuery
 
 # Импортируй свои функции из permissions/utils
-from permissions import can_admin_project, is_global_admin
-from google_sheets import CONFIG  # глобально загруженный конфиг
-from keyboards_store import is_user_allowed  # напишем ниже
+from bogataya_life.permissions import can_admin_project, is_global_admin
+from bogataya_life.google_sheets import CONFIG  # глобально загруженный конфиг
+from bogataya_life.keyboards_store import is_user_allowed  # напишем ниже
 
 
 class AccessMiddleware(BaseMiddleware):
