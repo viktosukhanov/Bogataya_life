@@ -8,8 +8,26 @@ version = "0.1.0"
 description = "Bogataya life Telegram bot"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["pyjson5",
-  "pytz","google"]
+dependencies = [
+  # config / utils
+  "pyjson5",
+  "pytz",
+
+  # telegram bot
+  "aiogram>=3.0,<4.0",
+
+  # async http
+  "aiohttp",
+
+  # google api / sheets
+  "google-auth",
+  "google-api-python-client",
+  "gspread",
+  "oauth2client",
+
+  # optional but recommended
+  "python-dotenv"
+]
 
 
 [tool.setuptools]
