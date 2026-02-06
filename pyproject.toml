@@ -9,7 +9,7 @@ description = "Bogataya life Telegram bot"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["pyjson5",
-  "pytz"]
+  "pytz","google"]
 
 
 [tool.setuptools]
