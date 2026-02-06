@@ -20,3 +20,13 @@ Thumbs.db
 # Env / secrets
 .env
 *.json
+# Local runtime artifacts
+app.log
+log.txt
+keyboards_cache.json5
+pyvenv.cfg
+
+# Local config (contains secrets)
+config.json5
+0config.json
+creds_service_acc_google.json
