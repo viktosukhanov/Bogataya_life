@@ -9,7 +9,8 @@ from typing import Any, Dict, List
 import os
 import pyjson5
 
-
+# корень проекта: .../Bogataya_life
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # Грузим конфиг (json или json5 — оба прочтёт pyjson5)
 CONFIG_PATH = Path(os.getenv("BOGATAYA_CONFIG", PROJECT_ROOT / "config.json5"))
 with open(CONFIG_PATH, "r", encoding="utf-8") as f:
