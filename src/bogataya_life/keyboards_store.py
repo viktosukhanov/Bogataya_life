@@ -9,7 +9,7 @@ import datetime as dt
 from typing import Callable, Dict, Any, List
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from permissions import get_admin_projects
+from bogataya_life.permissions import get_admin_projects
 
 
 # ===== Настройки =====
