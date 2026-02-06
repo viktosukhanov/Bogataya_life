@@ -13,13 +13,13 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from google_sheets import get_values_from_spreadsheet, \
+from bogataya_life.google_sheets import get_values_from_spreadsheet, \
     insert_values_to_spreadsheet, find_spreadsheet_id_for_user, CONFIG
-from keyboards_store import configure as kb_configure, build_and_cache_all_keyboards, get_user_keyboards, refresh_user_keyboards, get_type_keyboard_for_user, get_category_keyboard_for_user_and_type, build_projects_keyboard, remove_user_from_cache
-from google_sheets_async import init_sheets_service, insert_values_async
-from access_middleware import AccessMiddleware
-from permissions import get_admin_projects, can_admin_project, find_project
-from config_helpers import save_config
+from bogataya_life.keyboards_store import configure as kb_configure, build_and_cache_all_keyboards, get_user_keyboards, refresh_user_keyboards, get_type_keyboard_for_user, get_category_keyboard_for_user_and_type, build_projects_keyboard, remove_user_from_cache
+from bogataya_life.google_sheets_async import init_sheets_service, insert_values_async
+from bogataya_life.access_middleware import AccessMiddleware
+from bogataya_life.permissions import get_admin_projects, can_admin_project, find_project
+from bogataya_life.config_helpers import save_config
 
 # ========================== Переменные ================================
 
@@ -1037,6 +1037,10 @@ async def handle_comment_text(msg: Message, state: FSMContext):
 
 
 # Запуск бота
+def main() -> None:
+    import asyncio
+    asyncio.run(dp.start_polling(bot))
+
 if __name__ == "__main__":
     import asyncio
     asyncio.run(dp.start_polling(bot))
