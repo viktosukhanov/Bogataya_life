@@ -3,6 +3,7 @@ import apiclient.discovery
 from pathlib import Path
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
+from bogataya_life.client_access import load_clients_config
 #from config import spreadsheet_id
 import logging
 from typing import Any, Dict, List
@@ -15,9 +16,31 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = Path(os.getenv("BOGATAYA_CONFIG", PROJECT_ROOT / "config.json5"))
 with open(CONFIG_PATH, "r", encoding="utf-8") as f:
     CONFIG: Dict[str, Any] = pyjson5.load(f)
+# --- загрузка clients.json5 ---
+CLIENTS_PATH = Path(os.getenv("BOGATAYA_CLIENTS_CONFIG", PROJECT_ROOT / "clients.json5"))
+
+def _load_clients_config() -> dict:
+    if not CLIENTS_PATH.exists():
+        return {"clients": {}, "users": {}}
+    with open(CLIENTS_PATH, "r", encoding="utf-8") as f:
+        return pyjson5.load(f)
+
+
+# --- временный мост совместимости ---
+# Старый код ждёт CONFIG["projects"]
+# Генерируем его из clients.json5
+CONFIG["projects"] = [
+    {
+        "name": client_key,
+        "spreadsheet_id": client_cfg["registry_sheet_id"],
+    }
+    for client_key, client_cfg in CLIENTS_CONFIG.get("clients", {}).items()
+]
+
 
 # Файл, полученный в Google Developer Console
 CREDENTIALS_FILE = 'creds_service_acc_google.json'
+
 
 # Устанавливаем уровень логов
 logging.basicConfig(level=logging.INFO, filename='log.txt', filemode='w', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -36,14 +59,40 @@ service = apiclient.discovery.build('sheets', 'v4', http=http_auth)
 
 
 # --- ниже: добавь саму функцию ---
+
+
 def find_spreadsheet_id_for_user(user_id: int) -> str:
-    """
-    Возвращает spreadsheet_id по user_id на основе CONFIG["projects"][...]["allowed_user_ids"].
-    """
-    for project in CONFIG.get("projects", []):
-        if int(user_id) in [int(u) for u in project.get("allowed_user_ids", [])]:
-            return project["spreadsheet_id"]
-    raise PermissionError(f"user_id {user_id} не найден в allowed_user_ids ни одного проекта")
+    cfg = load_clients_config()
+    client_key = cfg.get("users", {}).get(str(user_id))
+    if not client_key:
+        raise PermissionError("User not mapped to any client in clients.json5")
+    return cfg["clients"][client_key]["registry_sheet_id"]
+
+
+def is_user_allowed(user_id: int) -> bool:
+    client_key = CLIENTS_CONFIG.get("users", {}).get(str(user_id))
+    if not client_key:
+        return False
+
+    client = CLIENTS_CONFIG["clients"].get(client_key)
+    if not client:
+        return False
+
+    admins_sheet_id = client["admins_sheet_id"]
+    admins_range = client.get("admins_range", "A:A")
+
+    values = get_values_from_spreadsheet(admins_range, admins_sheet_id) or []
+    admins = set()
+    for row in values:
+        if not row:
+            continue
+        try:
+            admins.add(int(str(row[0]).strip()))
+        except ValueError:
+            continue
+
+    return user_id in admins
+
 
 # Авторизуемся и получаем service — экземпляр доступа к API
 def get_values_from_spreadsheet(named_range, spreadsheet_id):
@@ -94,6 +143,26 @@ def insert_values_to_spreadsheet(values, range_name):
     body = {
         'values': [values],
     }
+
+def _load_clients_config() -> dict:
+    if not CLIENTS_PATH.exists():
+        # чтобы бот не падал сразу при импорте, если конфиг не создан
+        return {"clients": {}, "users": {}}
+    with open(CLIENTS_PATH, "r", encoding="utf-8") as f:
+        return pyjson5.load(f)
+
+CLIENTS_CONFIG = _load_clients_config()
+
+
+def get_admin_ids_for_client(client: str) -> set[int]:
+    sheet_id = CLIENTS_CONFIG["clients"][client]["admins_sheet_id"]
+
+    values = get_values_from_spreadsheet(
+        spreadsheet_id=sheet_id,
+        range_name="A:A"
+    )
+
+    return {int(row[0]) for row in values if row}
 
     result = service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,

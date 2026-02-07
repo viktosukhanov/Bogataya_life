@@ -76,32 +76,31 @@ def fetch_admin_ids(client: ClientInfo) -> set[int]:
     return admin_ids
 
 
-def is_user_allowed(user_id: int) -> bool:
-    cfg = load_clients_config()
-    client_key = get_client_key_for_user(user_id, cfg)
-    if not client_key:
-        return False
-
-    client = get_client_info(client_key, cfg)
-    return user_id in fetch_admin_ids(client)
-
-
-def resolve_registry_sheet_id(user_id: int) -> str:
-    cfg = load_clients_config()
-    client_key = get_client_key_for_user(user_id, cfg)
-    if not client_key:
-        raise PermissionError("User not mapped to any client in clients.json5")
-
-    client = get_client_info(client_key, cfg)
-    return client.registry_sheet_id
-
-
 def resolve_client_key(user_id: int) -> str:
-    cfg = load_clients_config()
-    client_key = get_client_key_for_user(user_id, cfg)
+    cfg = load_clients_config()  # ВАЖНО: читаем с диска каждый раз
+    client_key = cfg.get("users", {}).get(str(user_id))
     if not client_key:
         raise PermissionError("User not mapped to any client in clients.json5")
     return client_key
+
+
+def is_user_allowed(user_id: int) -> bool:
+    cfg = load_clients_config()  # ВАЖНО: читаем с диска каждый раз
+    client_key = cfg.get("users", {}).get(str(user_id))
+    if not client_key:
+        return False
+
+    allowed = cfg.get("clients", {}).get(client_key, {}).get("allowed_user_ids", [])
+    return user_id in set(map(int, allowed))
+
+
+def resolve_registry_sheet_id(user_id: int) -> str:
+    cfg = load_clients_config()  # ВАЖНО: читаем с диска каждый раз
+    client_key = cfg.get("users", {}).get(str(user_id))
+    if not client_key:
+        raise PermissionError("User not mapped to any client in clients.json5")
+    return cfg["clients"][client_key]["registry_sheet_id"]
+
 
 def _save_clients_config(cfg: dict) -> None:
     tmp = CLIENTS_PATH.with_suffix(".tmp")
