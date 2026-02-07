@@ -11,6 +11,8 @@ from typing import Callable, Dict, Any, List
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from bogataya_life.permissions import get_admin_projects
 from bogataya_life.google_sheets import is_user_allowed
+from bogataya_life.google_sheets import CLIENTS_CONFIG
+
 
 
 
@@ -101,9 +103,12 @@ def _build_keyboard(
     assert _get_values_from_spreadsheet is not None, "configure() не вызван"
 
     try:
+        print("DEBUG build kb", named_range, "sid", spreadsheet_id)
+
         values = _get_values_from_spreadsheet(named_range, spreadsheet_id) or []
         if not values:
             return [[{"text": "🔙 Назад", "callback_data": "back"}]]
+        print("DEBUG rows", len(values))
 
         row = values[0] if values else []
         main_buttons: list[dict] = []
@@ -195,12 +200,15 @@ async def build_and_cache_all_keyboards() -> None:
             logging.error(f"{dt.datetime.now()} - Не удалось построить клавиатуры для {sid}: {e}")
             continue
 
-        for uid in proj.get("allowed_user_ids", []):
-            cache[str(uid)] = {
+        for uid_str, client_key in CLIENTS_CONFIG.get("users", {}).items():
+            if client_key != proj["name"]:
+                continue
+
+            cache[str(uid_str)] = {
                 "spreadsheet_id": sid,
                 "category": kb_cat,
-                "account":  kb_acc,
-                "owners":   kb_own,
+                "account": kb_acc,
+                "owners": kb_own,
                 "types": type_map["types"],
                 "subcat_by_type": type_map["by_type"],
             }
