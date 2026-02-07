@@ -29,13 +29,21 @@ def _load_clients_config() -> dict:
 # --- временный мост совместимости ---
 # Старый код ждёт CONFIG["projects"]
 # Генерируем его из clients.json5
-CONFIG["projects"] = [
-    {
-        "name": client_key,
-        "spreadsheet_id": client_cfg["registry_sheet_id"],
-    }
-    for client_key, client_cfg in CLIENTS_CONFIG.get("clients", {}).items()
-]
+# генерируем projects из clients.json5 (читаем файл свежим)
+def _build_projects_from_clients() -> list[dict]:
+    from bogataya_life.client_access import load_clients_config
+    cfg = load_clients_config()
+    return [
+        {
+            "name": client_key,
+            "spreadsheet_id": client_cfg["registry_sheet_id"],
+            "admins_sheet_id": client_cfg["admins_sheet_id"],
+        }
+        for client_key, client_cfg in (cfg.get("clients", {}) or {}).items()
+    ]
+
+CONFIG["projects"] = _build_projects_from_clients()
+
 
 
 # Файл, полученный в Google Developer Console
