@@ -615,12 +615,17 @@ async def cmd_change_date(msg: Message, state: FSMContext):
 @dp.message(Command("update_users"))
 async def cmd_update_users(message):
     try:
-        client_key, n = update_users_for_requester(message.from_user.id)
+        client_key, user_ids = update_users_for_requester(message.from_user.id)
 
-        # чтобы новые пользователи/справочники гарантированно подтянулись
-        clear_keyboards_cache()
+        # 1) удалить из кэша пользователей этой компании (чтобы старые не мешали)
+        for uid in user_ids:
+            remove_user_from_cache(uid)
 
-        await message.answer(f"✅ Обновлено. Компания: {client_key}. Пользователей: {n}.")
+        # 2) пересобрать кэш клавиатур для пользователей этой компании
+        for uid in user_ids:
+            await refresh_user_keyboards(uid)
+
+        await message.answer(f"✅ Обновлено. Компания: {client_key}. Пользователей: {len(user_ids)}.")
     except Exception as e:
         await message.answer(f"⛔ Не удалось обновить пользователей: {e}")
 

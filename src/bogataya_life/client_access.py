@@ -125,7 +125,7 @@ def _parse_user_ids(values: list[list[object]]) -> list[int]:
     return out
 
 
-def update_users_for_requester(requester_id: int) -> Tuple[str, int]:
+def update_users_for_requester(requester_id: int) -> Tuple[str, list[int]]:
     """
     Обновляет users и allowed_user_ids только для компании requester-а.
     Источник: вкладка "Пользователи бота" в admins_sheet этой компании.
@@ -167,4 +167,4 @@ def update_users_for_requester(requester_id: int) -> Tuple[str, int]:
     cfg["clients"][client_key] = client
 
     _save_clients_config(cfg)
-    return client_key, len(allowed_user_ids)
+    return client_key, allowed_user_ids
