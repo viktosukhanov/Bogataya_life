@@ -8,7 +8,7 @@ from typing import Optional
 
 import pyjson5
 
-from bogataya_life.google_sheets import get_values_from_spreadsheet
+
 import json
 from typing import Tuple
 
@@ -59,8 +59,8 @@ def fetch_admin_ids(client: ClientInfo) -> set[int]:
     if cached and now - cached[0] < _ADMIN_CACHE_TTL_SEC:
         return cached[1]
 
-    values = get_values_from_spreadsheet(client.admins_range, client.admins_sheet_id)
-
+    from bogataya_life.google_sheets import get_values_from_spreadsheet
+    values = get_values_from_spreadsheet(users_range, admins_sheet_id) or []
 
     admin_ids: set[int] = set()
     for row in values or []:

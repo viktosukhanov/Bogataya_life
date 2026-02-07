@@ -3,7 +3,7 @@ import apiclient.discovery
 from pathlib import Path
 from oauth2client.service_account import ServiceAccountCredentials
 import datetime
-from bogataya_life.client_access import load_clients_config
+
 #from config import spreadsheet_id
 import logging
 from typing import Any, Dict, List
@@ -62,6 +62,7 @@ service = apiclient.discovery.build('sheets', 'v4', http=http_auth)
 
 
 def find_spreadsheet_id_for_user(user_id: int) -> str:
+    from bogataya_life.client_access import load_clients_config
     cfg = load_clients_config()
     client_key = cfg.get("users", {}).get(str(user_id))
     if not client_key:
