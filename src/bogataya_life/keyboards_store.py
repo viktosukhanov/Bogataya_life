@@ -10,6 +10,8 @@ from typing import Callable, Dict, Any, List
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from bogataya_life.permissions import get_admin_projects
+from bogataya_life.google_sheets import is_user_allowed
+
 
 
 # ===== Настройки =====
@@ -69,14 +71,18 @@ def remove_user_from_cache(user_id: int) -> None:
         _save_cache(cache)
 
 
-def is_user_allowed(user_id: int) -> bool:
-    """Проверяем по актуальному CONFIG: есть ли пользователь в allowed_user_ids любого проекта."""
-    from google_sheets import CONFIG  # берём актуальный CONFIG
-    uid = int(user_id)
-    for p in CONFIG.get("projects", []):
-        if uid in map(int, p.get("allowed_user_ids", [])):
-            return True
-    return False
+def is_user_allowed(uid: int) -> bool:
+    # В новой схеме доступ проверяется middleware (по admin-sheet).
+    # Здесь достаточно проверить, что пользователь привязан к клиенту (и мы можем получить его spreadsheet_id).
+    global _find_spreadsheet_id_for_user
+    if _find_spreadsheet_id_for_user is None:
+        return False
+    try:
+        _find_spreadsheet_id_for_user(uid)
+        return True
+    except Exception:
+        return False
+
 
 
 # ===== Построение клавиатур =====
