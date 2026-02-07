@@ -20,6 +20,10 @@ from bogataya_life.google_sheets_async import init_sheets_service, insert_values
 from bogataya_life.access_middleware import AccessMiddleware
 from bogataya_life.permissions import get_admin_projects, can_admin_project, find_project
 from bogataya_life.config_helpers import save_config
+from aiogram.filters import Command
+from bogataya_life.client_access import update_users_for_requester
+from bogataya_life.keyboards_store import clear_keyboards_cache
+
 
 # ========================== Переменные ================================
 
@@ -607,6 +611,18 @@ async def cmd_change_date(msg: Message, state: FSMContext):
         reply_markup=kb
     )
     await state.set_state(SpendStates.waiting_date)
+
+@dp.message(Command("update_users"))
+async def cmd_update_users(message):
+    try:
+        client_key, n = update_users_for_requester(message.from_user.id)
+
+        # чтобы новые пользователи/справочники гарантированно подтянулись
+        clear_keyboards_cache()
+
+        await message.answer(f"✅ Обновлено. Компания: {client_key}. Пользователей: {n}.")
+    except Exception as e:
+        await message.answer(f"⛔ Не удалось обновить пользователей: {e}")
 
 
 @dp.callback_query(SpendStates.waiting_date, F.data.startswith("cd_"))
