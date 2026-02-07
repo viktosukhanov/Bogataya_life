@@ -615,19 +615,24 @@ async def cmd_change_date(msg: Message, state: FSMContext):
 @dp.message(Command("update_users"))
 async def cmd_update_users(message):
     try:
-        client_key, user_ids = update_users_for_requester(message.from_user.id)
+        client_key, added, removed = update_users_for_requester(message.from_user.id)
 
-        # 1) удалить из кэша пользователей этой компании (чтобы старые не мешали)
-        for uid in user_ids:
+        # удалить из кэша тех, кого убрали
+        for uid in removed:
             remove_user_from_cache(uid)
 
-        # 2) пересобрать кэш клавиатур для пользователей этой компании
-        for uid in user_ids:
+        # пересобрать клавиатуры для новых пользователей
+        for uid in added:
             await refresh_user_keyboards(uid)
 
-        await message.answer(f"✅ Обновлено. Компания: {client_key}. Пользователей: {len(user_ids)}.")
+        await message.answer(
+            f"✅ Компания: {client_key}\n"
+            f"➕ Добавлено: {len(added)}\n"
+            f"➖ Удалено: {len(removed)}"
+        )
     except Exception as e:
         await message.answer(f"⛔ Не удалось обновить пользователей: {e}")
+
 
 
 @dp.callback_query(SpendStates.waiting_date, F.data.startswith("cd_"))

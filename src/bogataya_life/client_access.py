@@ -125,11 +125,13 @@ def _parse_user_ids(values: list[list[object]]) -> list[int]:
     return out
 
 
-def update_users_for_requester(requester_id: int) -> Tuple[str, list[int]]:
+def update_users_for_requester(requester_id: int) -> tuple[str, list[int], list[int]]:
     """
-    Обновляет users и allowed_user_ids только для компании requester-а.
+    Обновляет users и allowed_user_ids ТОЛЬКО для компании requester-а.
     Источник: вкладка "Пользователи бота" в admins_sheet этой компании.
-    Возвращает (client_key, count_users).
+
+    Возвращает:
+      (client_key, added_user_ids, removed_user_ids)
     """
     cfg = load_clients_config()
 
@@ -144,27 +146,34 @@ def update_users_for_requester(requester_id: int) -> Tuple[str, list[int]]:
     admins_sheet_id = client["admins_sheet_id"]
     users_range = client.get("users_range", "'Пользователи бота'!A:A")
 
-    # ВАЖНО: у вас сигнатура (named_range, spreadsheet_id)
+    # сигнатура у тебя: get_values_from_spreadsheet(named_range, spreadsheet_id)
     values = get_values_from_spreadsheet(users_range, admins_sheet_id) or []
-    allowed_user_ids = _parse_user_ids(values)
+    new_ids = _parse_user_ids(values)  # list[int]
 
-    # 1) записываем список в clients[client]
-    client["allowed_user_ids"] = allowed_user_ids
-
-    # 2) пересобираем users map только для этой компании:
+    # старые пользователи этой компании из clients.json5
     users_map: dict[str, str] = cfg.get("users", {}) or {}
+    old_ids = [int(uid_s) for uid_s, ck in users_map.items() if ck == client_key]
 
-    # убрать старые записи, которые указывали на эту компанию
+    new_set = set(new_ids)
+    old_set = set(old_ids)
+
+    added = sorted(list(new_set - old_set))
+    removed = sorted(list(old_set - new_set))
+
+    # 1) обновляем список пользователей в clients[client]
+    client["allowed_user_ids"] = new_ids
+    cfg["clients"][client_key] = client
+
+    # 2) убираем старые записи users_map для этой компании
     for uid_s, ck in list(users_map.items()):
         if ck == client_key:
             users_map.pop(uid_s, None)
 
-    # добавить актуальные
-    for uid in allowed_user_ids:
+    # 3) добавляем актуальные записи users_map для этой компании
+    for uid in new_ids:
         users_map[str(uid)] = client_key
 
     cfg["users"] = users_map
-    cfg["clients"][client_key] = client
 
     _save_clients_config(cfg)
-    return client_key, allowed_user_ids
+    return client_key, added, removed
