@@ -238,7 +238,7 @@ async def write_transfer_rows(data: dict, user_id: int):
     Пишет две строки: расход с источника и доход на получателя.
     Категория = 'Перевод', комментарий содержит направление.
     """
-    sid = find_spreadsheet_id_for_user(user_id)
+    sid = data.get("registry_sheet_id")
     rng = "РеестрФакт"
 
     # базовые поля

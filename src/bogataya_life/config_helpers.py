@@ -1,7 +1,7 @@
 # config_helpers.py
 import json, pyjson5, os
 
-CONFIG_PATH = os.getenv("CONFIG_PATH", "config.json5")
+CONFIG_PATH = os.getenv("CONFIG_PATH", "../../config.json5")
 
 
 def save_config(CONFIG: dict):

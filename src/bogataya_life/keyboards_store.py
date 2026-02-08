@@ -90,43 +90,44 @@ def is_user_allowed(uid: int) -> bool:
 
 
 # ===== Построение клавиатур =====
-def _build_keyboard(
-    named_range: str,
-    spreadsheet_id: str,
-    cb_prefix: str,
-    row_width: int,
-) -> list[list[dict]]:
-    """
-    Формирует структуру клавиатуры:
-    - Основные кнопки располагаются с заданным row_width;
-    - Последней строкой всегда добавляется кнопка '🔙 Назад'.
-    Возвращает список списков словарей (text, callback_data).
-    """
+def _drop_header(col: list) -> list:
+    """Убираем 1-ю строку (заголовок)."""
+    return col[1:] if isinstance(col, list) and len(col) > 0 else []
+
+
+def _uniq_nonempty(seq: list) -> list[str]:
+    """Trim + remove empty + unique сохраняем порядок."""
+    out: list[str] = []
+    seen = set()
+    for x in seq or []:
+        s = str(x).strip()
+        if not s:
+            continue
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+def _build_keyboard(named_range: str, spreadsheet_id: str, cb_prefix: str, rw: int):
     assert _get_values_from_spreadsheet is not None, "configure() не вызван"
 
     try:
-        print("DEBUG build kb", named_range, "sid", spreadsheet_id)
-
         values = _get_values_from_spreadsheet(named_range, spreadsheet_id) or []
-        if not values:
+        col = values[0] if values and isinstance(values[0], list) else []
+        items = _uniq_nonempty(_drop_header(col))
+
+        if not items:
             return [[{"text": "🔙 Назад", "callback_data": "back"}]]
-        print("DEBUG rows", len(values))
 
-        row = values[0] if values else []
-        main_buttons: list[dict] = []
-        for v in row[1:]:
-            text = str(v).strip()
-            if text:
-                main_buttons.append({"text": text, "callback_data": f"{cb_prefix}{text}"})
-
-        rw = max(1, int(row_width or 1))
-        keyboard_data: list[list[dict]] = [main_buttons[i:i + rw] for i in range(0, len(main_buttons), rw)]
+        main_buttons = [{"text": text, "callback_data": f"{cb_prefix}{text}"} for text in items]
+        keyboard_data = [main_buttons[i:i + rw] for i in range(0, len(main_buttons), rw)]
         keyboard_data.append([{"text": "🔙 Назад", "callback_data": "back"}])
         return keyboard_data
-
     except Exception as e:
-        logging.error(f"{dt.datetime.now()} - Ошибка при создании клавиатуры {named_range}: {e}")
+        print(f"ERROR build keyboard {named_range}: {e}")
         return [[{"text": "🔙 Назад", "callback_data": "back"}]]
+
 
 
 def _to_inline_kb(data: List[List[Dict[str, str]]]) -> InlineKeyboardMarkup:
@@ -140,48 +141,55 @@ def _build_type_subcat_mapping(spreadsheet_id: str) -> dict:
     assert _get_values_from_spreadsheet is not None, "configure() не вызван"
 
     values = _get_values_from_spreadsheet("Subcategory", spreadsheet_id) or []
-    if not values:
-        return {"types": [], "by_type": {}}
+    if not values or len(values) < 3:
+        return {
+            "types": [],
+            "categories_by_type": {},
+            "subcat_by_type_category": {},
+        }
 
-    by_type: dict[str, list[str]] = {}
-    types_order: list[str] = []
+    # COLUMNS: [Type, Category, Subcategory]
+    type_col = _drop_header(values[0] if isinstance(values[0], list) else [])
+    cat_col  = _drop_header(values[1] if isinstance(values[1], list) else [])
+    sub_col  = _drop_header(values[2] if isinstance(values[2], list) else [])
 
-    # Формат 1 (COLUMNS): [types_col, subcats_col]
-    if len(values) >= 2 and isinstance(values[0], list) and isinstance(values[1], list):
-        types_col = values[0]
-        subcats_col = values[1]
+    # 1) Типы: берём ВСЕ типы из колонки A, независимо от B/C
+    types: list[str] = []
+    seen_types = set()
+    for t_raw in type_col:
+        t = str(t_raw).strip()
+        if not t:
+            continue
+        if t not in seen_types:
+            seen_types.add(t)
+            types.append(t)
 
-        for t, s in zip(types_col, subcats_col):
-            t = str(t).strip()
-            s = str(s).strip()
-            if not t or not s:
-                continue
-            by_type.setdefault(t, []).append(s)
-            if t not in types_order:
-                types_order.append(t)
+    # 2) Категории и подкатегории
+    categories_by_type: dict[str, list[str]] = {}
+    subcat_by_type_category: dict[str, dict[str, list[str]]] = {}
 
-    # Формат 2 (fallback): одна колонка — просто список категорий без типов
-    else:
-        # берём первую колонку как категории
-        col = values[0] if isinstance(values[0], list) else []
-        all_subcats = [str(x).strip() for x in col if str(x).strip()]
-        # раздаём всем типам, которые используются в боте
-        for t in ("Траты", "Поступления"):
-            by_type[t] = all_subcats
-        types_order = [t for t in ("Траты", "Поступления") if by_type.get(t)]
+    for t_raw, c_raw, s_raw in zip(type_col, cat_col, sub_col):
+        t = str(t_raw).strip()
+        c = str(c_raw).strip()
+        s = str(s_raw).strip()
+        if not t:
+            continue
 
-    # чистим дубликаты в списках
-    for t, lst in by_type.items():
-        seen = set()
-        cleaned = []
-        for x in lst:
-            if x not in seen:
-                seen.add(x)
-                cleaned.append(x)
-        by_type[t] = cleaned
+        if c:
+            categories_by_type.setdefault(t, [])
+            if c not in categories_by_type[t]:
+                categories_by_type[t].append(c)
 
-    return {"types": types_order, "by_type": by_type}
+        if c and s:
+            subcat_by_type_category.setdefault(t, {}).setdefault(c, [])
+            if s not in subcat_by_type_category[t][c]:
+                subcat_by_type_category[t][c].append(s)
 
+    return {
+        "types": types,
+        "categories_by_type": categories_by_type,
+        "subcat_by_type_category": subcat_by_type_category,
+    }
 
 
 # ===== Публичные функции =====
@@ -227,7 +235,8 @@ async def refresh_user_keyboards(user_id: int) -> None:
         "account":  kb_acc,
         "owners":   kb_own,
         "types": type_map["types"],
-        "subcat_by_type": type_map["by_type"],
+    "categories_by_type": type_map["categories_by_type"],
+    "subcat_by_type_category": type_map["subcat_by_type_category"],
     }
     _save_cache(cache)
     logging.info(f"Кэш клавиатур обновлён для user_id={user_id}")
@@ -256,7 +265,8 @@ def get_user_keyboards(user_id: int) -> tuple[InlineKeyboardMarkup, InlineKeyboa
             "account":  kb_acc,
             "owners":   kb_own,
             "types": type_map["types"],
-            "subcat_by_type": type_map["by_type"],
+            "categories_by_type": type_map["categories_by_type"],
+            "subcat_by_type_category": type_map["subcat_by_type_category"],
         }
         cache[str(user_id)] = entry
         _save_cache(cache)
@@ -288,7 +298,8 @@ def get_type_keyboard_for_user(user_id: int) -> InlineKeyboardMarkup:
             "account":   [],
             "owners":    [],
             "types": type_map["types"],
-            "subcat_by_type": type_map["by_type"],
+            "categories_by_type": type_map["categories_by_type"],
+            "subcat_by_type_category": type_map["subcat_by_type_category"],
         }
         cache[str(user_id)] = entry
         _save_cache(cache)
@@ -308,15 +319,20 @@ def _chunk(lst, n: int):
 async def get_category_keyboard_for_user_and_type(user_id: int, exp_type: str, row_width: int = 3) -> InlineKeyboardMarkup:
     from bogataya_life.client_access import resolve_client_key
     client_key = resolve_client_key(user_id)
+
     entry = await ensure_company_cached(client_key)
 
-    subcats = entry.get("subcat_by_type", {}).get(exp_type, [])
+    subcats_map = entry.get("subcat_by_type_category", {}).get(exp_type, {})
+    subcats = [s for lst in subcats_map.values() for s in lst]  # <-- то что в []
+
     rows = []
     for i in range(0, len(subcats), row_width):
         chunk = subcats[i:i + row_width]
         rows.append([{"text": s, "callback_data": f"category_{s}"} for s in chunk])
+
     rows.append([{"text": "🔙 Назад", "callback_data": "back"}])
     return _to_inline_kb(rows)
+
 
 
 
@@ -373,14 +389,16 @@ async def refresh_company_keyboards(client_key: str) -> None:
     type_map = _build_type_subcat_mapping(sid)
 
     cache = _load_cache()
-    cache.setdefault("companies", {})[client_key] = {
+    cache["companies"][client_key] = {
         "spreadsheet_id": sid,
         "category": kb_cat,
-        "account":  kb_acc,
-        "owners":   kb_own,
+        "account": kb_acc,
+        "owners": kb_own,
         "types": type_map["types"],
-        "subcat_by_type": type_map["by_type"],
+        "categories_by_type": type_map["categories_by_type"],
+        "subcat_by_type_category": type_map["subcat_by_type_category"],
     }
+
     _save_cache(cache)
 
 
@@ -409,13 +427,13 @@ def get_company_entry(client_key: str) -> dict:
     return entry
 
 
-def get_user_keyboards(user_id: int) -> tuple[InlineKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardMarkup]:
+'''def get_user_keyboards(user_id: int) -> tuple[InlineKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardMarkup]:
     """
     Сохраняем совместимость со старым кодом:
     пользователь -> компания -> клавиатуры компании.
     """
     client_key = resolve_client_key(user_id)
-    return get_company_keyboards(client_key)
+    return get_company_keyboards(client_key)'''
 
 async def ensure_company_cached(client_key: str) -> dict:
     """

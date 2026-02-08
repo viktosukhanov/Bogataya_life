@@ -28,5 +28,7 @@ pyvenv.cfg
 
 # Local config (contains secrets)
 config.json5
+config2.json5
+clients.json5
 0config.json
 creds_service_acc_google.json

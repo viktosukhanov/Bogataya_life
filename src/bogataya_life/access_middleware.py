@@ -1,11 +1,10 @@
 from aiogram import BaseMiddleware
 
 from bogataya_life.google_sheets import CONFIG
-from bogataya_life.client_access import is_user_allowed, resolve_registry_sheet_id
+from bogataya_life.client_access import is_user_allowed, resolve_registry_sheet_id, resolve_client_key
 
 
 GLOBAL_ADMINS = set(map(int, CONFIG.get("admins", [])))
-
 
 class AccessMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
@@ -24,6 +23,7 @@ class AccessMiddleware(BaseMiddleware):
             await event.answer("⛔ У вас нет доступа к этому боту.")
             return
 
+        data["client_key"] = resolve_client_key(user_id)
         data["registry_sheet_id"] = resolve_registry_sheet_id(user_id)
         return await handler(event, data)
 

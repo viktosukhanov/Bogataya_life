@@ -1,0 +1,17 @@
+{
+  "clients": {
+    "company_a": {
+      "registry_sheet_id": "REGISTRY_ID",
+      "admins_sheet_id": "ADMINS_ID",
+      "users_range": "'Пользователи бота'!A:A"
+    },
+    "company_b": {
+      "registry_sheet_id": "REGISTRY_ID_2",
+      "admins_sheet_id": "ADMINS_ID_2",
+      "users_range": "'Пользователи бота'!A:A"
+    }
+  },
+
+  // будет авто-обновляться
+  "users": {}
+}
