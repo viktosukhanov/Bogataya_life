@@ -10,8 +10,7 @@ from typing import Callable, Dict, Any, List
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from bogataya_life.permissions import get_admin_projects
-from bogataya_life.google_sheets import is_user_allowed
-from bogataya_life.google_sheets import CLIENTS_CONFIG
+from bogataya_life.client_access import resolve_client_key
 from pathlib import Path
 
 
@@ -187,11 +186,27 @@ def _build_type_subcat_mapping(spreadsheet_id: str) -> dict:
 
 # ===== Публичные функции =====
 async def build_and_cache_all_keyboards() -> None:
+    """
+    Строит кэш клавиатур ДЛЯ ВСЕХ компаний из clients.json5.
+    Никаких _config/CONFIG/projects.
+    """
     from bogataya_life.client_access import load_clients_config
+
     cfg = load_clients_config()
-    user_ids = [int(uid_s) for uid_s in (cfg.get("users") or {}).keys()]
-    for uid in user_ids:
-        await refresh_user_keyboards(uid)
+    clients = cfg.get("clients", {}) or {}
+
+    cache = _load_cache()
+    cache["companies"] = {}
+    _save_cache(cache)
+
+    for client_key in clients.keys():
+        # НИКАКИХ continue: пытаемся собрать, при ошибке падаем с понятной причиной
+        await refresh_company_keyboards(client_key)
+
+    # на всякий — сохраняем, но refresh_company_keyboards уже сохраняет
+    _save_cache(_load_cache())
+
+
 
 
 
@@ -256,7 +271,8 @@ def get_user_keyboards(user_id: int) -> tuple[InlineKeyboardMarkup, InlineKeyboa
 def get_type_keyboard_for_user(user_id: int) -> InlineKeyboardMarkup:
     """Клавиатура с типами операций. Если записи в кэше нет — создаём её на лету."""
     cache = _load_cache()
-    entry = cache.get(str(user_id))
+    client_key = resolve_client_key(user_id)
+    entry = get_company_entry(client_key)
 
     if entry is None:
         # нет кэша — строим минимум (типовую мапу) на лету
@@ -310,3 +326,93 @@ def build_projects_keyboard(CONFIG: Dict[str, Any], admin_user_id: int, row_widt
     rows = [buttons[i:i + row_width] for i in range(0, len(buttons), row_width)]
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def _load_cache() -> dict:
+    try:
+        with open(CACHE_PATH, "r", encoding="utf-8") as f:
+            return pyjson5.load(f)
+    except FileNotFoundError:
+        return {"companies": {}}
+    except Exception:
+        return {"companies": {}}
+
+
+def _save_cache(cache: dict) -> None:
+    with open(CACHE_PATH, "w", encoding="utf-8") as f:
+        pyjson5.dump(cache, f, ensure_ascii=False, indent=2)
+
+
+def remove_company_from_cache(client_key: str) -> None:
+    cache = _load_cache()
+    cache.setdefault("companies", {}).pop(client_key, None)
+    _save_cache(cache)
+
+
+async def refresh_company_keyboards(client_key: str) -> None:
+    """
+    Пересобирает клавиатуры для ОДНОЙ компании и сохраняет в кеш.
+    Источник истины: clients.json5["clients"][client_key]["registry_sheet_id"].
+    """
+    from bogataya_life.client_access import load_clients_config
+
+    assert _get_values_from_spreadsheet is not None, "configure() не вызван"
+
+    cfg = load_clients_config()
+    client = (cfg.get("clients") or {}).get(client_key)
+    if not client:
+        raise ValueError(f"Company '{client_key}' not found in clients.json5")
+
+    sid = client.get("registry_sheet_id")
+    if not sid:
+        raise ValueError(f"Company '{client_key}' has no registry_sheet_id in clients.json5")
+
+    kb_cat = _build_keyboard("Subcategory", sid, "category_", 3)
+    kb_acc = _build_keyboard("Accounts",    sid, "account_",  2)
+    kb_own = _build_keyboard("Owners",      sid, "owner_",    2)
+    type_map = _build_type_subcat_mapping(sid)
+
+    cache = _load_cache()
+    cache.setdefault("companies", {})[client_key] = {
+        "spreadsheet_id": sid,
+        "category": kb_cat,
+        "account":  kb_acc,
+        "owners":   kb_own,
+        "types": type_map["types"],
+        "subcat_by_type": type_map["by_type"],
+    }
+    _save_cache(cache)
+
+
+def get_company_keyboards(client_key: str) -> tuple[InlineKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardMarkup]:
+    """
+    Возвращает (категории, счета, владельцы) для компании из кеша.
+    Если в кеше нет — бросаем, чтобы вызывающий решил (пересобрать/сообщить).
+    """
+    cache = _load_cache()
+    entry = (cache.get("companies") or {}).get(client_key)
+    if not entry:
+        raise KeyError(f"No keyboards cache for company {client_key}")
+
+    return (
+        _to_inline_kb(entry["category"]),
+        _to_inline_kb(entry["account"]),
+        _to_inline_kb(entry["owners"]),
+    )
+
+
+def get_company_entry(client_key: str) -> dict:
+    cache = _load_cache()
+    entry = (cache.get("companies") or {}).get(client_key)
+    if not entry:
+        raise KeyError(f"No keyboards cache for company {client_key}")
+    return entry
+
+
+def get_user_keyboards(user_id: int) -> tuple[InlineKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardMarkup]:
+    """
+    Сохраняем совместимость со старым кодом:
+    пользователь -> компания -> клавиатуры компании.
+    """
+    client_key = resolve_client_key(user_id)
+    return get_company_keyboards(client_key)
+
