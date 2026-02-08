@@ -41,61 +41,63 @@ def _parse_user_ids(values: list[list[object]]) -> list[int]:
 
 
 def resolve_client_key(user_id: int) -> str:
-    cfg = load_clients_config()  # всегда свежий файл
-    client_key = (cfg.get("users") or {}).get(str(user_id))
-    if not client_key:
-        raise PermissionError("User not mapped to any client in clients.json5")
-    return client_key
+    cfg = load_clients_config()
+    clients = cfg.get("clients", {}) or {}
+
+    found = None
+    for ck, c in clients.items():
+        allowed = c.get("allowed_user_ids", []) or []
+        if user_id in set(map(int, allowed)):
+            if found and found != ck:
+                raise PermissionError(f"User {user_id} mapped to multiple clients: {found}, {ck}")
+            found = ck
+
+    if not found:
+        raise PermissionError("User not allowed for any client")
+    return found
 
 
 def resolve_registry_sheet_id(user_id: int) -> str:
-    cfg = load_clients_config()  # всегда свежий файл
-    client_key = (cfg.get("users") or {}).get(str(user_id))
-    if not client_key:
-        raise PermissionError("User not mapped to any client in clients.json5")
-    return cfg["clients"][client_key]["registry_sheet_id"]
+    cfg = load_clients_config()
+    ck = resolve_client_key(user_id)
+    return cfg["clients"][ck]["registry_sheet_id"]
 
 
 def is_user_allowed(user_id: int) -> bool:
-    cfg = load_clients_config()  # всегда свежий файл
-    client_key = (cfg.get("users") or {}).get(str(user_id))
-    if not client_key:
+    try:
+        resolve_client_key(user_id)
+        return True
+    except Exception:
         return False
-    allowed = ((cfg.get("clients") or {}).get(client_key) or {}).get("allowed_user_ids", [])
-    return user_id in set(map(int, allowed))
 
 
 def update_users_for_requester(requester_id: int) -> tuple[str, list[int], list[int], int]:
     """
-    Пересобирает пользователей ТОЛЬКО компании requester-а.
-
-    Источник: admins_sheet_id компании, вкладка "Пользователи бота" (колонка A по умолчанию).
-    Записывает:
-      - clients[client]["allowed_user_ids"] = полный список из таблицы
-      - users: удаляет все старые записи этой компании и ставит новые
-
-    Возвращает: (client_key, added_ids, removed_ids, total_now)
+    Обновляет allowed_user_ids ТОЛЬКО для компании requester-а:
+    - requester должен уже быть в allowed_user_ids этой компании (bootstrap)
+    Источник: admins_sheet -> вкладка "Пользователи бота"
     """
     cfg = load_clients_config()
+    clients = cfg.get("clients", {}) or {}
 
-    client_key = (cfg.get("users") or {}).get(str(requester_id))
-    if not client_key:
-        raise PermissionError("Requester is not mapped to any client in clients.json5")
+    # определить компанию requester-а по allowed_user_ids
+    requester_client = None
+    for ck, c in clients.items():
+        if requester_id in set(map(int, (c.get("allowed_user_ids", []) or []))):
+            requester_client = ck
+            break
+    if not requester_client:
+        raise PermissionError("Requester is not in allowed_user_ids of any client (bootstrap required)")
 
-    client = (cfg.get("clients") or {}).get(client_key)
-    if not client:
-        raise PermissionError("Client not found in clients.json5")
-
+    client = clients[requester_client]
     admins_sheet_id = client["admins_sheet_id"]
     users_range = client.get("users_range", "'Пользователи бота'!A:A")
 
-    # локальный импорт -> нет циклических импортов
     import bogataya_life.google_sheets as gs
     values = gs.get_values_from_spreadsheet(users_range, admins_sheet_id) or []
     new_ids = _parse_user_ids(values)
 
-    users_map: dict[str, str] = cfg.get("users") or {}
-    old_ids = [int(uid_s) for uid_s, ck in users_map.items() if ck == client_key]
+    old_ids = list(map(int, client.get("allowed_user_ids", []) or []))
 
     new_set = set(new_ids)
     old_set = set(old_ids)
@@ -103,20 +105,9 @@ def update_users_for_requester(requester_id: int) -> tuple[str, list[int], list[
     added = sorted(list(new_set - old_set))
     removed = sorted(list(old_set - new_set))
 
-    # 1) сохранить полный список в clients[client]
     client["allowed_user_ids"] = new_ids
-    (cfg.get("clients") or {})[client_key] = client
-
-    # 2) удалить все старые users для этой компании
-    for uid_s, ck in list(users_map.items()):
-        if ck == client_key:
-            users_map.pop(uid_s, None)
-
-    # 3) добавить актуальные users для этой компании
-    for uid in new_ids:
-        users_map[str(uid)] = client_key
-
-    cfg["users"] = users_map
+    clients[requester_client] = client
+    cfg["clients"] = clients
 
     _save_clients_config(cfg)
-    return client_key, added, removed, len(new_ids)
+    return requester_client, added, removed, len(new_ids)
