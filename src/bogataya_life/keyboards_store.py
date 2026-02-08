@@ -137,51 +137,51 @@ def _to_inline_kb(data: List[List[Dict[str, str]]]) -> InlineKeyboardMarkup:
 
 # ===== Структура Тип → Подкатегории для транспонированного 'Subcategory' =====
 def _build_type_subcat_mapping(spreadsheet_id: str) -> dict:
-    """
-    Ожидаемый формат диапазона 'Subcategory':
-      A1: 'Тип'           B1..N1: значения типа (Траты/Поступления/...)
-      A2: 'Категория'     B2..N2: (не используется здесь)
-      A3: 'Подкатегории'  B3..N3: подкатегории
-
-    Возвращает:
-      {"types": [...], "by_type": {"Траты":[...], "Поступления":[...]}}
-    """
     assert _get_values_from_spreadsheet is not None, "configure() не вызван"
 
     values = _get_values_from_spreadsheet("Subcategory", spreadsheet_id) or []
-    if not values or len(values) < 3:
-        return {"types": [], "by_type": {}}
-
-    row_type = row_sub = None
-    for row in values:
-        if not row:
-            continue
-        first = str(row[0]).strip().lower()
-        if first == "тип":
-            row_type = row
-        elif first == "подкатегории":
-            row_sub = row
-
-    if not row_type or not row_sub:
-        logging.warning("_build_type_subcat_mapping: строки 'Тип'/'Подкатегории' не найдены")
+    if not values:
         return {"types": [], "by_type": {}}
 
     by_type: dict[str, list[str]] = {}
     types_order: list[str] = []
 
-    max_len = min(len(row_type), len(row_sub))
-    for col in range(1, max_len):
-        t = str(row_type[col]).strip()
-        s = str(row_sub[col]).strip()
-        if not t or not s:
-            continue
-        if t not in by_type:
-            by_type[t] = []
-            types_order.append(t)
-        if s not in by_type[t]:
-            by_type[t].append(s)
+    # Формат 1 (COLUMNS): [types_col, subcats_col]
+    if len(values) >= 2 and isinstance(values[0], list) and isinstance(values[1], list):
+        types_col = values[0]
+        subcats_col = values[1]
+
+        for t, s in zip(types_col, subcats_col):
+            t = str(t).strip()
+            s = str(s).strip()
+            if not t or not s:
+                continue
+            by_type.setdefault(t, []).append(s)
+            if t not in types_order:
+                types_order.append(t)
+
+    # Формат 2 (fallback): одна колонка — просто список категорий без типов
+    else:
+        # берём первую колонку как категории
+        col = values[0] if isinstance(values[0], list) else []
+        all_subcats = [str(x).strip() for x in col if str(x).strip()]
+        # раздаём всем типам, которые используются в боте
+        for t in ("Траты", "Поступления"):
+            by_type[t] = all_subcats
+        types_order = [t for t in ("Траты", "Поступления") if by_type.get(t)]
+
+    # чистим дубликаты в списках
+    for t, lst in by_type.items():
+        seen = set()
+        cleaned = []
+        for x in lst:
+            if x not in seen:
+                seen.add(x)
+                cleaned.append(x)
+        by_type[t] = cleaned
 
     return {"types": types_order, "by_type": by_type}
+
 
 
 # ===== Публичные функции =====

@@ -71,11 +71,23 @@ service = apiclient.discovery.build('sheets', 'v4', http=http_auth)
 
 def find_spreadsheet_id_for_user(user_id: int) -> str:
     from bogataya_life.client_access import load_clients_config
+
     cfg = load_clients_config()
-    client_key = cfg.get("users", {}).get(str(user_id))
-    if not client_key:
+    clients = cfg.get("clients", {}) or {}
+
+    found_client = None
+    for ck, c in clients.items():
+        allowed = c.get("allowed_user_ids", []) or []
+        if user_id in set(map(int, allowed)):
+            if found_client and found_client != ck:
+                raise PermissionError(f"User {user_id} mapped to multiple clients: {found_client}, {ck}")
+            found_client = ck
+
+    if not found_client:
         raise PermissionError("User not mapped to any client in clients.json5")
-    return cfg["clients"][client_key]["registry_sheet_id"]
+
+    return clients[found_client]["registry_sheet_id"]
+
 
 
 def is_user_allowed(user_id: int) -> bool:
