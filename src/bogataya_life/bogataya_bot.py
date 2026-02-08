@@ -20,9 +20,10 @@ from bogataya_life.google_sheets_async import init_sheets_service, insert_values
 from bogataya_life.access_middleware import AccessMiddleware
 from bogataya_life.permissions import get_admin_projects, can_admin_project, find_project
 from bogataya_life.config_helpers import save_config
-from aiogram.filters import Command
-from bogataya_life.client_access import update_users_for_requester
 from bogataya_life.keyboards_store import clear_keyboards_cache
+from bogataya_life.client_access import update_users_for_requester
+from bogataya_life.keyboards_store import remove_company_from_cache, refresh_company_keyboards
+
 
 
 # ========================== Переменные ================================
@@ -330,7 +331,7 @@ async def _resume_after_date_change(prev_state: str | None, user_id: int, state:
 
     if prev_state == SpendStates.waiting_category.state:
         exp_type = data.get("expense_type")
-        cat_kb = get_category_keyboard_for_user_and_type(user_id, exp_type) if exp_type else None
+        cat_kb = await get_category_keyboard_for_user_and_type(user_id, exp_type) if exp_type else None
         if cat_kb:
             await _reply(summary + "\n\nВыберите категорию:", cat_kb)
         else:
@@ -546,7 +547,7 @@ async def handle_back_button(cb: CallbackQuery, state: FSMContext):
     if cur_state == SpendStates.waiting_comment:
         # Назад к категории
         exp_type = data.get("expense_type")
-        cat_kb = get_category_keyboard_for_user_and_type(cb.from_user.id, exp_type) if exp_type else None
+        cat_kb = await get_category_keyboard_for_user_and_type(cb.from_user.id, exp_type) if exp_type else None
         if cat_kb and _count_buttons(cat_kb) > 0:
             await cb.message.edit_text(summary + "\n\nВыберите категорию:", reply_markup=cat_kb)
             await state.set_state(SpendStates.waiting_category)
@@ -615,24 +616,24 @@ async def cmd_change_date(msg: Message, state: FSMContext):
 @dp.message(Command("update_users"))
 async def cmd_update_users(message):
     try:
+        # 1) обновляем список пользователей ТОЛЬКО компании отправителя
         client_key, added, removed, total_now = update_users_for_requester(message.from_user.id)
 
-        # убрать из кэша удалённых
-        for uid in removed:
-            remove_user_from_cache(uid)
-
-        # пересобрать клавиатуры для добавленных (и для вызывающего, на всякий)
-        for uid in added + [message.from_user.id]:
-            await refresh_user_keyboards(uid)
+        # 2) пересобираем кэш клавиатур ТОЛЬКО этой компании
+        remove_company_from_cache(client_key)          # удаляем запись компании из кеша (НЕ файл!)
+        await refresh_company_keyboards(client_key)    # строим заново по registry_sheet_id
 
         await message.answer(
-            f"✅ Компания: {client_key}\n"
-            f"👥 Сейчас: {total_now}\n"
-            f"➕ Добавлено: {len(added)}\n"
-            f"➖ Удалено: {len(removed)}"
+            f"✅ Пользователи обновлены\n"
+            f"Компания: {client_key}\n"
+            f"Сейчас пользователей: {total_now}\n"
+            f"Добавлено: {len(added)}\n"
+            f"Удалено: {len(removed)}\n"
+            f"Кэш клавиатур компании пересобран."
         )
     except Exception as e:
         await message.answer(f"⛔ Не удалось обновить пользователей: {e}")
+
 
 
 
@@ -860,7 +861,7 @@ async def choose_type(cb: CallbackQuery, state: FSMContext):
             await state.update_data(account=account)
 
             # шаг категории (фильтр по выбранному типу)
-            cat_kb = get_category_keyboard_for_user_and_type(cb.from_user.id, exp_type)
+            cat_kb = await get_category_keyboard_for_user_and_type(cb.from_user.id, exp_type)
             cats_cnt = _count_buttons(cat_kb)
 
             if cats_cnt == 0:
@@ -958,7 +959,7 @@ async def choose_account(cb: CallbackQuery, state: FSMContext):
         return
 
     # Категории по выбранному типу
-    cat_kb = get_category_keyboard_for_user_and_type(cb.from_user.id, exp_type)
+    cat_kb = await get_category_keyboard_for_user_and_type(cb.from_user.id, exp_type)
     cats_cnt = _count_buttons(cat_kb)  # важно: эта функция игнорирует кнопку "Назад"
 
     if cats_cnt == 0:

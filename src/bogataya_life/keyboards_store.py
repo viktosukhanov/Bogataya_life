@@ -305,18 +305,19 @@ def _chunk(lst, n: int):
         yield lst[i:i + n]
 
 
-def get_category_keyboard_for_user_and_type(user_id: int, exp_type: str, row_width: int = 3) -> InlineKeyboardMarkup:
-    """Клавиатура подкатегорий (столбец C) для выбранного типа (столбец A)."""
-    cache = _load_cache()
-    entry = cache.get(str(user_id), {})
+async def get_category_keyboard_for_user_and_type(user_id: int, exp_type: str, row_width: int = 3) -> InlineKeyboardMarkup:
+    from bogataya_life.client_access import resolve_client_key
+    client_key = resolve_client_key(user_id)
+    entry = await ensure_company_cached(client_key)
+
     subcats = entry.get("subcat_by_type", {}).get(exp_type, [])
-
-    rows: list[list[dict]] = []
-    for chunk in _chunk(subcats, row_width):
+    rows = []
+    for i in range(0, len(subcats), row_width):
+        chunk = subcats[i:i + row_width]
         rows.append([{"text": s, "callback_data": f"category_{s}"} for s in chunk])
-
     rows.append([{"text": "🔙 Назад", "callback_data": "back"}])
     return _to_inline_kb(rows)
+
 
 
 def build_projects_keyboard(CONFIG: Dict[str, Any], admin_user_id: int, row_width: int = 2) -> InlineKeyboardMarkup:
@@ -415,4 +416,29 @@ def get_user_keyboards(user_id: int) -> tuple[InlineKeyboardMarkup, InlineKeyboa
     """
     client_key = resolve_client_key(user_id)
     return get_company_keyboards(client_key)
+
+async def ensure_company_cached(client_key: str) -> dict:
+    """
+    Гарантирует, что в кеше есть запись для компании.
+    Если нет — пересобирает и сохраняет.
+    """
+    cache = _load_cache()
+    companies = cache.get("companies", {}) or {}
+    if client_key not in companies:
+        await refresh_company_keyboards(client_key)
+        cache = _load_cache()
+        companies = cache.get("companies", {}) or {}
+    if client_key not in companies:
+        raise KeyError(f"No keyboards cache for company {client_key}")
+    return companies[client_key]
+
+async def get_user_keyboards_async(user_id: int):
+    from bogataya_life.client_access import resolve_client_key
+    client_key = resolve_client_key(user_id)
+    entry = await ensure_company_cached(client_key)
+    return (
+        _to_inline_kb(entry["category"]),
+        _to_inline_kb(entry["account"]),
+        _to_inline_kb(entry["owners"]),
+    )
 
