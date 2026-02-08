@@ -12,12 +12,15 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from bogataya_life.permissions import get_admin_projects
 from bogataya_life.google_sheets import is_user_allowed
 from bogataya_life.google_sheets import CLIENTS_CONFIG
+from pathlib import Path
 
 
 
 
 # ===== Настройки =====
-CACHE_PATH = os.getenv("KEYBOARDS_CACHE_PATH", "keyboards_cache.json5")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CACHE_PATH = Path(os.getenv("KEYBOARDS_CACHE_PATH", str(PROJECT_ROOT / "keyboards_cache.json5")))
+
 
 # ===== Внутренние зависимости (DI) =====
 _config: Dict[str, Any] | None = None
@@ -52,7 +55,7 @@ def _load_cache() -> Dict[str, Any]:
 
 def _save_cache(cache: Dict[str, Any]) -> None:
     try:
-        with open(CACHE_PATH, "w", encoding="utf-8") as f:
+        with open(str(CACHE_PATH), "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logging.error(f"{dt.datetime.now()} - Ошибка сохранения {CACHE_PATH}: {e}")
@@ -184,37 +187,12 @@ def _build_type_subcat_mapping(spreadsheet_id: str) -> dict:
 
 # ===== Публичные функции =====
 async def build_and_cache_all_keyboards() -> None:
-    """Создаёт кэш клавиатур для всех проектов и пользователей (при старте)."""
-    assert _config is not None, "configure() не вызван"
+    from bogataya_life.client_access import load_clients_config
+    cfg = load_clients_config()
+    user_ids = [int(uid_s) for uid_s in (cfg.get("users") or {}).keys()]
+    for uid in user_ids:
+        await refresh_user_keyboards(uid)
 
-    cache: Dict[str, Any] = {}
-
-    for proj in _config.get("projects", []):
-        sid = proj["spreadsheet_id"]
-        try:
-            kb_cat = _build_keyboard("Subcategory", sid, "category_", 3)
-            kb_acc = _build_keyboard("Accounts",    sid, "account_",  2)
-            kb_own = _build_keyboard("Owners",      sid, "owner_",    2)
-            type_map = _build_type_subcat_mapping(sid)
-        except Exception as e:
-            logging.error(f"{dt.datetime.now()} - Не удалось построить клавиатуры для {sid}: {e}")
-            continue
-
-        for uid_str, client_key in CLIENTS_CONFIG.get("users", {}).items():
-            if client_key != proj["name"]:
-                continue
-
-            cache[str(uid_str)] = {
-                "spreadsheet_id": sid,
-                "category": kb_cat,
-                "account": kb_acc,
-                "owners": kb_own,
-                "types": type_map["types"],
-                "subcat_by_type": type_map["by_type"],
-            }
-
-    _save_cache(cache)
-    logging.info(f"{dt.datetime.now()} - Клавиатуры сформированы и сохранены ({len(cache)} пользователей).")
 
 
 async def refresh_user_keyboards(user_id: int) -> None:

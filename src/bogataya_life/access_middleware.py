@@ -15,7 +15,7 @@ class AccessMiddleware(BaseMiddleware):
         # /update_users — только глобальные админы из config.json5
         if text.strip().startswith("/update_users"):
             if user_id not in GLOBAL_ADMINS:
-                await event.answer("⛔ Команда доступна только глобальному администратору.")
+                await event.answer("⛔ Команда доступна только администратору.")
                 return
             return await handler(event, data)
 

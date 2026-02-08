@@ -615,18 +615,19 @@ async def cmd_change_date(msg: Message, state: FSMContext):
 @dp.message(Command("update_users"))
 async def cmd_update_users(message):
     try:
-        client_key, added, removed = update_users_for_requester(message.from_user.id)
+        client_key, added, removed, total_now = update_users_for_requester(message.from_user.id)
 
-        # удалить из кэша тех, кого убрали
+        # убрать из кэша удалённых
         for uid in removed:
             remove_user_from_cache(uid)
 
-        # пересобрать клавиатуры для новых пользователей
-        for uid in added:
+        # пересобрать клавиатуры для добавленных (и для вызывающего, на всякий)
+        for uid in added + [message.from_user.id]:
             await refresh_user_keyboards(uid)
 
         await message.answer(
             f"✅ Компания: {client_key}\n"
+            f"👥 Сейчас: {total_now}\n"
             f"➕ Добавлено: {len(added)}\n"
             f"➖ Удалено: {len(removed)}"
         )
